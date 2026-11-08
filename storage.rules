@@ -1,0 +1,25 @@
+rules_version = '2';
+
+// =========================================================
+// Reglas de Cloud Storage para Zimrat
+//   · Cualquiera puede leer (descargar/ver) los PDFs.
+//   · Solo los administradores suben o borran, y solo PDFs de < 50 MB.
+// Publicar: firebase deploy --only storage
+// =========================================================
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function isAdmin() {
+      return request.auth != null
+        && firestore.exists(/databases/(default)/documents/admins/$(request.auth.uid));
+    }
+
+    match /songs/{songId}/{fileName} {
+      allow read: if true;
+      allow create, update: if isAdmin()
+        && request.resource.contentType == 'application/pdf'
+        && request.resource.size < 50 * 1024 * 1024;
+      allow delete: if isAdmin();
+    }
+  }
+}

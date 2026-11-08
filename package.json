@@ -1,0 +1,19 @@
+{
+  "name": "zimrat",
+  "version": "7.2.0",
+  "description": "Zimrat — cancionero digital para músicos (PWA + Firebase + Cloudinary)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "npx --yes serve -l 8000 .",
+    "emulators": "firebase emulators:start --project demo-zimrat --export-on-exit=./emulator-data",
+    "emulators:saved": "firebase emulators:start --project demo-zimrat --import=./emulator-data --export-on-exit=./emulator-data",
+    "seed": "node tools/seed-emulators.mjs",
+    "deploy:rules": "firebase deploy --only firestore:rules",
+    "deploy": "firebase deploy --only hosting,firestore:rules"
+  },
+  "devDependencies": {
+    "firebase-admin": "^14.5.0",
+    "firebase-tools": "^15.35.0"
+  }
+}

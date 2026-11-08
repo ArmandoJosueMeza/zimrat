@@ -1,0 +1,123 @@
+rules_version = '2';
+
+// =========================================================
+// Reglas de Cloud Firestore para Zimrat
+//   · Cualquiera puede LEER las canciones (sin login).
+//   · Solo el administrador (zimratapp@gmail.com) puede crear, editar o borrar.
+//   · Se valida la forma de cada documento de «songs».
+//   · «feedback»: cualquiera puede ENVIAR sugerencias; solo el admin las lee.
+//   · «errorLogs»: la app registra errores desde cualquier dispositivo;
+//     solo el admin los lee y borra.
+//   · «cloudinaryTrash»: PDFs huérfanos de Cloudinary (solo admin).
+//   · Los repertorios NO están en Firestore (son locales de cada usuario).
+// Publicar: npx firebase deploy --only firestore:rules
+// =========================================================
+// ---------------------------------------------------------
+// CÓMO SE LEEN ESTAS REGLAS
+// Las reglas se ejecutan en los SERVIDORES de Google antes de cada
+// lectura o escritura. Aunque alguien modifique el JavaScript de la
+// página, no puede saltárselas: son la seguridad real de Zimrat.
+// · match /coleccion/{id}  → a qué documentos se aplica el bloque.
+// · allow read / create / update / delete: if <condición>.
+// · request.auth           → quién hace la petición (null si nadie).
+// · request.resource.data  → los datos que se intentan guardar.
+// · resource.data          → los datos que ya estaban guardados.
+// · request.time           → hora del servidor (para validar createdAt).
+// Si ninguna regla permite la operación, se deniega.
+// ---------------------------------------------------------
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Administrador = sesión iniciada Y correo exacto. Debe coincidir con
+    // config.ADMIN_EMAIL de la app.
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email == 'zimratapp@gmail.com';
+    }
+
+    // Validación de una canción: solo campos conocidos (hasOnly), número
+    // entero positivo, título de 1 a 200 caracteres, etc. Protege contra
+    // datos corruptos aunque el admin use otra herramienta.
+    function validSong(d) {
+      return d.keys().hasOnly(['number', 'title', 'artist', 'key', 'category', 'tags',
+                               'lyricsText', 'pdfLinks', 'audioUrl', 'bpm', 'timeSignature', 'updatedAt'])
+        && d.number is int && d.number > 0
+        && d.title is string && d.title.size() > 0 && d.title.size() <= 200
+        && (!('tags' in d) || (d.tags is list && d.tags.size() <= 20))
+        && (!('bpm' in d) || d.bpm == null || (d.bpm is int && d.bpm >= 30 && d.bpm <= 300))
+        && (!('lyricsText' in d) || (d.lyricsText is string && d.lyricsText.size() <= 60000))
+        && (!('pdfLinks' in d) || d.pdfLinks is map)
+        && (!('audioUrl' in d) || d.audioUrl == '' || d.audioUrl.matches('^https?://.+'));
+    }
+
+    // Canciones: lectura pública (cualquiera ve el cancionero); escritura
+    // solo del admin y con datos válidos.
+    match /songs/{songId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && validSong(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    // Texto opcional con límite de longitud
+    function optText(d, field, max) {
+      return !(field in d) || (d[field] is string && d[field].size() <= max);
+    }
+
+    // Buzón de sugerencias y reportes (público → admin)
+    // Buzón: cualquiera CREA (sin login), con tipo y longitudes válidos y
+    // read == false; solo el admin lee, borra o marca como leído.
+    match /feedback/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['type', 'message', 'songTitle', 'name', 'contact', 'page', 'userAgent', 'read', 'createdAt'])
+        && request.resource.data.type in ['sugerencia', 'error', 'comentario']
+        && request.resource.data.message is string
+        && request.resource.data.message.size() >= 5 && request.resource.data.message.size() <= 2000
+        && optText(request.resource.data, 'songTitle', 200)
+        && optText(request.resource.data, 'name', 80)
+        && optText(request.resource.data, 'contact', 120)
+        && optText(request.resource.data, 'page', 200)
+        && optText(request.resource.data, 'userAgent', 300)
+        && request.resource.data.read == false
+        && request.resource.data.createdAt == request.time;
+      allow read, delete: if isAdmin();
+      // El admin solo puede cambiar «read» (marcar como leído)
+      allow update: if isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
+    }
+
+    // Registro de errores de la app (cualquier dispositivo → admin)
+    // Registro de errores: cualquier dispositivo crea; nadie modifica;
+    // solo el admin lee y borra.
+    match /errorLogs/{id} {
+      allow create: if request.resource.data.keys().hasOnly(['source', 'message', 'code', 'context', 'page', 'userAgent', 'online', 'userRole', 'createdAt'])
+        && request.resource.data.source in ['firestore', 'cloudinary', 'red', 'pdf', 'auth', 'javascript']
+        && request.resource.data.message is string && request.resource.data.message.size() <= 1000
+        && optText(request.resource.data, 'code', 100)
+        && optText(request.resource.data, 'context', 500)
+        && optText(request.resource.data, 'page', 200)
+        && optText(request.resource.data, 'userAgent', 300)
+        && request.resource.data.createdAt == request.time;
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // PDFs de Cloudinary que ya no usa ninguna canción (pendientes de borrar
+    // en la Media Library). Solo el admin los crea, lee y quita de la lista.
+    match /cloudinaryTrash/{id} {
+      allow create: if isAdmin()
+        && request.resource.data.keys().hasOnly(['url', 'publicId', 'songTitle', 'reason', 'createdAt'])
+        && request.resource.data.url is string && request.resource.data.url.size() <= 500
+        && request.resource.data.url.matches('^https://res\\.cloudinary\\.com/.+')
+        && optText(request.resource.data, 'publicId', 300)
+        && optText(request.resource.data, 'songTitle', 200)
+        && optText(request.resource.data, 'reason', 60)
+        && request.resource.data.createdAt == request.time;
+      allow read, delete: if isAdmin();
+      allow update: if false;
+    }
+
+    // Todo lo demás, cerrado.
+    // Regla final: todo lo demás queda cerrado (principio de mínimo privilegio).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

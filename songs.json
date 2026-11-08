@@ -1,0 +1,145 @@
+[
+  {
+    "numero": 1,
+    "titulo": "Camino al Sol",
+    "autor": "Coro Juvenil (ejemplo)",
+    "tono": "G",
+    "categoria": "Pop",
+    "tags": [
+      "alegre",
+      "entrada"
+    ],
+    "bpm": 96,
+    "compas": "4/4",
+    "audioUrl": "",
+    "letraTexto": "Voy caminando hacia la luz\ncon paso firme y corazón\ncada mañana es un regalo\nque me recuerda tu canción\n\nCamino al sol, camino al sol\nllevo en el pecho una canción\ny aunque la noche sea larga\nsiempre amanece en mi interior",
+    "letra": "pdfs/01-camino-al-sol-letra.pdf",
+    "acordes": "pdfs/01-camino-al-sol-acordes.pdf",
+    "partitura": "pdfs/01-camino-al-sol-partitura.pdf"
+  },
+  {
+    "numero": 2,
+    "titulo": "Amanecer",
+    "autor": "Grupo Raíces (ejemplo)",
+    "tono": "C",
+    "categoria": "Folclore",
+    "tags": [
+      "vals",
+      "mañana"
+    ],
+    "bpm": 88,
+    "compas": "3/4",
+    "audioUrl": "",
+    "letraTexto": "Se pinta el cielo de color\ndespierta el mundo en su rumor\ny en el silencio de la aurora\nnace de nuevo la ilusión\n\nAmanecer, amanecer\nla tierra canta otra vez\ncon el rocío en las flores\nvuelve la vida a florecer",
+    "letra": "pdfs/02-amanecer-letra.pdf",
+    "acordes": "pdfs/02-amanecer-acordes.pdf",
+    "partitura": "pdfs/02-amanecer-partitura.pdf"
+  },
+  {
+    "numero": 3,
+    "titulo": "Despertar",
+    "autor": "Coro Juvenil (ejemplo)",
+    "tono": "D",
+    "categoria": "Pop",
+    "tags": [
+      "alegre"
+    ],
+    "bpm": 110,
+    "compas": "4/4",
+    "audioUrl": "",
+    "letraTexto": "Abre los ojos, ya es de día\ndeja la noche atrás\nhay una nueva melodía\nque nos invita a cantar\n\nDespierta, despierta\nel mundo te quiere escuchar\nlevanta tu voz con fuerza\nque hoy es tiempo de empezar",
+    "letra": "pdfs/03-despertar-letra.pdf",
+    "acordes": "pdfs/03-despertar-acordes.pdf",
+    "partitura": null
+  },
+  {
+    "numero": 4,
+    "titulo": "Brisa del Mar",
+    "autor": "Grupo Raíces (ejemplo)",
+    "tono": "Am",
+    "categoria": "Folclore",
+    "tags": [
+      "mar",
+      "nostalgia"
+    ],
+    "bpm": 120,
+    "compas": "6/8",
+    "audioUrl": "",
+    "letraTexto": "Viene la brisa desde el mar\ntrae recuerdos al pasar\nolas que cantan en la orilla\nuna canción para soñar\n\nBrisa del mar, llévame\ndonde las velas se van\nquiero mirar el horizonte\ny nunca dejar de cantar",
+    "letra": "pdfs/04-brisa-del-mar-letra.pdf",
+    "acordes": "pdfs/04-brisa-del-mar-acordes.pdf",
+    "partitura": "pdfs/04-brisa-del-mar-partitura.pdf"
+  },
+  {
+    "numero": 5,
+    "titulo": "Él Vendrá",
+    "autor": "Ministerio Esperanza (ejemplo)",
+    "tono": "E",
+    "categoria": "Música Sacra",
+    "tags": [
+      "adoración",
+      "esperanza"
+    ],
+    "bpm": 72,
+    "compas": "4/4",
+    "audioUrl": "",
+    "letraTexto": "Con la esperanza en el camino\nlevantaremos nuestra voz\ny cuando llegue el nuevo día\ncantaremos todos con amor\n\nÉl vendrá, él vendrá\ncon su luz nos guiará\nno hay tristeza que resista\ncuando su paz llegará",
+    "letra": "pdfs/05-el-vendra-letra.pdf",
+    "acordes": "pdfs/05-el-vendra-acordes.pdf",
+    "partitura": "pdfs/05-el-vendra-partitura.pdf"
+  },
+  {
+    "numero": 6,
+    "titulo": "Último Lucero",
+    "autor": "Coro Navideño (ejemplo)",
+    "tono": "F",
+    "categoria": "Navidad",
+    "tags": [
+      "villancico",
+      "noche"
+    ],
+    "bpm": 84,
+    "compas": "3/4",
+    "audioUrl": "",
+    "letraTexto": "Brilla el último lucero\nantes de amanecer\nguarda el sueño del viajero\nhasta volverlo a ver\n\nNoche santa, noche clara\ncampanas al sonar\nlos pastores van cantando\nque la paz vendrá",
+    "letra": "pdfs/06-ultimo-lucero-letra.pdf",
+    "acordes": null,
+    "partitura": null
+  },
+  {
+    "numero": 7,
+    "titulo": "Vida Nueva",
+    "autor": "Ministerio Esperanza (ejemplo)",
+    "tono": "G",
+    "categoria": "Música Sacra",
+    "tags": [
+      "alabanza",
+      "júbilo"
+    ],
+    "bpm": 128,
+    "compas": "4/4",
+    "audioUrl": "",
+    "letraTexto": "Estaba solo en la tormenta\nsin un lugar donde llegar\npero su amor rompió mis cadenas\ny hoy puedo volver a cantar\n\nMe dio vida nueva\nme levantó del polvo\ncanto con todas mis fuerzas\nporque ya no estoy solo",
+    "letra": "pdfs/07-vida-nueva-letra.pdf",
+    "acordes": "pdfs/07-vida-nueva-acordes.pdf",
+    "partitura": "pdfs/07-vida-nueva-partitura.pdf"
+  },
+  {
+    "numero": 8,
+    "titulo": "Ruta de Fuego",
+    "autor": "Los Trueno (ejemplo)",
+    "tono": "Em",
+    "categoria": "Rock",
+    "tags": [
+      "energía",
+      "viaje"
+    ],
+    "bpm": 140,
+    "compas": "4/4",
+    "audioUrl": "",
+    "letraTexto": "Motor encendido en la ciudad\nluces que corren sin parar\nllevo una guitarra y un sueño\nnadie me puede detener\n\nRuta de fuego, sigue adelante\ngrita la noche, suena el tambor\nruta de fuego, nada me frena\nllevo el volumen en el corazón",
+    "letra": "pdfs/08-ruta-de-fuego-letra.pdf",
+    "acordes": "pdfs/08-ruta-de-fuego-acordes.pdf",
+    "partitura": null
+  }
+]

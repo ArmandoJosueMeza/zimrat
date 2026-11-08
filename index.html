@@ -1,0 +1,73 @@
+<!-- =========================================================
+     index.html — PUNTO DE ENTRADA DE ZIMRAT
+     ---------------------------------------------------------
+     Es el único HTML de la app. Casi está vacío a propósito:
+     toda la interfaz la construye JavaScript (app.js y la carpeta js/).
+     Este patrón se llama «SPA» (Single Page Application, aplicación de
+     una sola página): el navegador carga este archivo UNA vez y después
+     cambia de «pantalla» sin recargar, leyendo la parte # de la URL.
+     
+     Orden de carga:
+       1. <head>: metadatos, manifiesto PWA, iconos y el script del tema.
+       2. styles.css: todo el diseño (claro/oscuro, responsive).
+       3. lib/pdf.min.js: PDF.js (dibuja los PDF en <canvas>).
+       4. app.js (type="module"): arranca la aplicación.
+     ========================================================= -->
+<!doctype html>
+<html lang="es">
+<head>
+  <!-- UTF-8: permite tildes, eñes y símbolos musicales (♯, ♭) sin errores. -->
+  <meta charset="utf-8">
+  <!-- viewport: en móviles usa el ancho real de la pantalla (sin «zoom de escritorio»).
+       viewport-fit=cover aprovecha toda la pantalla en iPhone con muesca;
+       el CSS usa env(safe-area-inset-*) para no tapar contenido. -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Zimrat · Cancionero para músicos</title>
+  <meta name="description" content="Zimrat: cancionero digital para músicos. Letras, acordes y partituras, metrónomo y repertorios, también sin conexión.">
+  <!-- Color de la barra del navegador en Android (la app lo actualiza al cambiar de tema). -->
+  <meta name="theme-color" content="#ffffff">
+  <!-- manifest.json describe la PWA: nombre, iconos y colores para «Instalar app». -->
+  <link rel="manifest" href="manifest.json">
+  <!-- Iconos: pestaña del navegador (SVG) y pantalla de inicio de iPhone/iPad (PNG). -->
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <!-- En iOS, al instalarla desde Safari se abre a pantalla completa, como una app nativa. -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Zimrat">
+  <!-- Script en línea (sin archivo aparte) para que se ejecute ANTES de pintar la página:
+       lee el tema guardado (o el del sistema operativo) y lo pone en <html data-theme="…">.
+       Si esperáramos a app.js, la página se vería un instante en claro y luego en oscuro.
+       try/catch: en modo privado, localStorage puede lanzar un error. -->
+  <!-- Aplica el tema antes de pintar (evita parpadeo) -->
+  <script>
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem('zimrat-theme'); } catch (e) {}
+      if (t !== 'dark' && t !== 'light') t = window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      document.documentElement.dataset.theme = t;
+    })();
+  </script>
+  <!-- Hoja de estilos única. Está escrita a mano con variables CSS (no usa Tailwind),
+       así no hace falta compilar nada y funciona 100 % sin conexión. -->
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- #app: contenedor raíz. Mientras carga muestra el logo y un spinner («boot»);
+       app.js lo reemplaza por la cabecera, las vistas y el visor. -->
+  <div id="app">
+    <div class="boot"><img src="icons/icon.svg" alt="" width="72" height="72" class="boot-logo"><p>Zimrat</p><div class="spinner"></div></div>
+  </div>
+
+  <!-- Solo visible al imprimir -->
+  <div id="printArea" aria-hidden="true"></div>
+
+  <!-- Mensaje para navegadores con JavaScript desactivado. -->
+  <noscript><p style="padding:24px;text-align:center">Esta aplicación necesita JavaScript.</p></noscript>
+
+  <!-- PDF.js 3.11 (copia local en lib/, para que funcione sin conexión).
+       Es un script clásico: crea la variable global window.pdfjsLib que usa PdfViewer.js. -->
+  <script src="lib/pdf.min.js"></script>
+  <!-- app.js es un «módulo ES»: puede usar import/export y se ejecuta después de leer el HTML. -->
+  <script type="module" src="app.js"></script>
+</body>
+</html>

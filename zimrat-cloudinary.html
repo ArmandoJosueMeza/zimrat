@@ -1,0 +1,1063 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Zimrat - Cancionero Digital</title>
+  <meta name="theme-color" content="#0f172a">
+  <!-- Tailwind CSS (CDN: ideal para prototipos; en producción conviene compilarlo) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PDF.js para renderizar los PDFs de Cloudinary -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  </script>
+  <style>
+    .hc-pdf canvas { filter: invert(1) hue-rotate(180deg); }
+    #pdf-render-box canvas { display: block; margin: 0 auto 12px; background: #fff; max-width: 100%; height: auto; }
+    .toast { transition: opacity .25s, transform .25s; }
+    .toast.hide { opacity: 0; transform: translateY(8px); }
+    .tab-active { background: #f59e0b; color: #020617; }
+    details > summary { cursor: pointer; }
+  </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col">
+
+  <!-- Aviso público de conexión (cualquier usuario) -->
+  <div id="offline-banner" class="hidden bg-amber-500 text-slate-950 text-xs font-semibold text-center py-1.5 px-3">
+    ⚠️ Sin conexión a internet. Algunas funciones no estarán disponibles hasta que vuelva la conexión.
+  </div>
+
+  <!-- Header -->
+  <header class="bg-slate-800 border-b border-slate-700 p-4 flex flex-wrap gap-2 justify-between items-center shadow-md">
+    <div class="flex items-center space-x-3">
+      <span class="text-2xl font-bold tracking-wider text-amber-400">🎶 ZIMRAT</span>
+    </div>
+    <div id="auth-status" class="text-sm flex items-center gap-2">
+      <button id="login-btn" onclick="openLoginModal()" class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold px-4 py-1.5 rounded transition">Admin Login</button>
+      <div id="admin-user-info" class="hidden flex items-center gap-2">
+        <!-- Estado de conexión con Firebase (solo admin) -->
+        <span id="conn-chip" title="Estado de la conexión con Firebase" class="hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full bg-slate-700 text-slate-300">
+          <span id="conn-chip-dot" class="w-2 h-2 rounded-full bg-slate-400"></span><span id="conn-chip-text">Comprobando…</span>
+        </span>
+        <button onclick="openAdminPanel()" class="relative bg-sky-700 hover:bg-sky-600 text-white text-xs px-3 py-1.5 rounded font-semibold">
+          Panel
+          <span id="panel-badge" class="hidden absolute -top-2 -right-2 bg-rose-600 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5"></span>
+        </button>
+        <span id="admin-email" class="hidden md:inline text-xs text-slate-300"></span>
+        <button onclick="logoutAdmin()" class="bg-rose-600 hover:bg-rose-700 text-white text-xs px-3 py-1.5 rounded">Salir</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Container -->
+  <main class="flex-1 max-w-6xl w-full mx-auto p-4 md:p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+
+    <!-- Columna Izquierda: Buscador y Listado -->
+    <section class="bg-slate-800/50 p-4 rounded-xl border border-slate-700/60 flex flex-col h-[60vh] md:h-[75vh]">
+      <div class="flex justify-between items-center mb-4">
+        <h2 class="text-lg font-semibold text-amber-300">Repertorio</h2>
+        <button id="new-song-btn" onclick="openSongModal()" class="hidden bg-emerald-600 hover:bg-emerald-700 text-white text-xs px-3 py-1.5 rounded font-medium transition">+ Nueva Canción</button>
+      </div>
+      <input type="search" id="search-input" placeholder="Buscar por número, título, artista o letra..." oninput="filterSongs()" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm mb-4 focus:outline-none focus:border-amber-400">
+      <div id="songs-list" class="flex-1 overflow-y-auto space-y-2 pr-1">
+        <p class="text-xs text-slate-500 text-center py-4">Cargando canciones...</p>
+      </div>
+    </section>
+
+    <!-- Columna Derecha: Visor -->
+    <section id="song-viewer" class="md:col-span-2 bg-slate-800/80 p-4 md:p-6 rounded-xl border border-slate-700 flex flex-col justify-between min-h-[60vh] md:h-[75vh] overflow-hidden">
+      <div id="welcome-state" class="m-auto text-center text-slate-400">
+        <p class="text-xl font-medium">Selecciona una canción de la lista</p>
+        <p class="text-sm mt-1">Visualiza letras, acordes con zoom o abre tu partitura en alta calidad desde Cloudinary.</p>
+      </div>
+
+      <div id="song-content" class="hidden flex flex-col h-full overflow-hidden">
+        <div class="flex flex-wrap gap-2 justify-between items-start border-b border-slate-700 pb-3 mb-4">
+          <div>
+            <h1 id="view-title" class="text-2xl font-bold text-amber-400"></h1>
+            <p id="view-meta" class="text-xs text-slate-400 mt-0.5"></p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button onclick="adjustZoom(-1)" class="bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded text-xs">A-</button>
+            <button onclick="adjustZoom(1)" class="bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded text-xs">A+</button>
+            <button id="hc-btn" onclick="toggleHighContrast()" class="bg-slate-700 hover:bg-slate-600 px-2.5 py-1 rounded text-xs">Alto Contraste</button>
+            <span id="admin-song-actions" class="hidden flex items-center gap-2">
+              <button onclick="editCurrentSong()" class="bg-sky-700 hover:bg-sky-600 px-2.5 py-1 rounded text-xs">Editar</button>
+              <button onclick="deleteCurrentSong()" class="bg-rose-700 hover:bg-rose-600 px-2.5 py-1 rounded text-xs">Eliminar</button>
+            </span>
+          </div>
+        </div>
+
+        <div id="view-body-container" class="flex-1 overflow-y-auto pr-2 space-y-4">
+          <div>
+            <h3 class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-1">Acordes y Letra</h3>
+            <pre id="view-chords" class="font-mono text-sm whitespace-pre-wrap bg-slate-900/80 p-4 rounded-lg border border-slate-700/50 leading-relaxed"></pre>
+          </div>
+          <div id="pdf-viewer-section" class="hidden mt-4">
+            <h3 class="text-xs uppercase tracking-wider text-slate-400 font-semibold mb-2">Partitura Original (Cloudinary)</h3>
+            <div class="flex space-x-2 mb-2">
+              <a id="pdf-direct-link" href="#" target="_blank" rel="noopener" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1.5 rounded transition">Abrir PDF a Pantalla Completa</a>
+            </div>
+            <p id="pdf-status" class="text-xs text-slate-400 mb-2"></p>
+            <div id="pdf-render-box" class="bg-slate-900 border border-slate-700 rounded-lg p-2 overflow-auto max-h-[60vh]"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Botón flotante: Sugerencias (público) -->
+  <button onclick="openFeedbackModal()" class="fixed bottom-4 right-4 z-40 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-sm px-4 py-2.5 rounded-full shadow-lg shadow-black/40">
+    💬 Sugerencias
+  </button>
+
+  <!-- Contenedor de avisos (toasts) -->
+  <div id="toasts" class="fixed bottom-20 right-4 left-4 sm:left-auto z-[60] flex flex-col items-end gap-2 pointer-events-none"></div>
+
+  <!-- ============ Modal: Login Administrador ============ -->
+  <div id="login-modal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4 z-50">
+    <form onsubmit="event.preventDefault(); loginAdmin()" class="bg-slate-800 border border-slate-700 p-6 rounded-xl w-full max-w-sm">
+      <h3 class="text-lg font-bold text-amber-400 mb-4">Acceso Administrador</h3>
+      <input type="email" id="admin-email-input" placeholder="Correo electrónico" autocomplete="username" required class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm mb-3">
+      <input type="password" id="admin-pass-input" placeholder="Contraseña" autocomplete="current-password" required class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm mb-2">
+      <p id="login-error" class="text-xs text-rose-400 min-h-[1rem] mb-2"></p>
+      <div class="flex justify-end space-x-2">
+        <button type="button" onclick="closeLoginModal()" class="px-4 py-1.5 text-xs bg-slate-700 rounded">Cancelar</button>
+        <button type="submit" id="login-submit" class="px-4 py-1.5 text-xs bg-amber-500 text-slate-950 font-semibold rounded disabled:opacity-50">Entrar</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ============ Modal: Agregar / Editar Canción ============ -->
+  <div id="song-modal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4 z-50">
+    <div class="bg-slate-800 border border-slate-700 p-6 rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <h3 id="modal-song-title" class="text-lg font-bold text-amber-400 mb-4">Nueva Canción</h3>
+      <form id="song-form" onsubmit="saveSong(event)" class="space-y-3" novalidate>
+        <input type="hidden" id="song-id">
+        <div class="grid grid-cols-4 gap-2">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">N.º</label>
+            <input type="number" id="form-number" min="1" step="1" required class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm">
+          </div>
+          <div class="col-span-3">
+            <label class="text-xs text-slate-400 block mb-1">Título</label>
+            <input type="text" id="form-title" required maxlength="200" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm">
+          </div>
+        </div>
+        <div class="grid grid-cols-2 gap-2">
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Artista / Ministerio</label>
+            <input type="text" id="form-artist" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm">
+          </div>
+          <div>
+            <label class="text-xs text-slate-400 block mb-1">Tono (Key)</label>
+            <input type="text" id="form-key" placeholder="Ej. Re Mayor" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm">
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Letra y Acordes Estructurados</label>
+          <textarea id="form-chords" rows="6" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm font-mono"></textarea>
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Subir Partitura (solo archivos PDF)</label>
+          <input type="file" id="form-pdf-file" accept="application/pdf,.pdf" onchange="onPdfSelected(this)" class="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-amber-500 file:text-slate-950 hover:file:bg-amber-600">
+          <!-- Alerta visual de validación del PDF -->
+          <div id="pdf-alert" class="hidden mt-2 text-xs rounded-lg border px-3 py-2"></div>
+          <p id="current-pdf-note" class="text-[10px] text-slate-400 mt-1"></p>
+          <label id="remove-pdf-wrap" class="hidden text-[11px] text-slate-300 mt-1 items-center gap-1">
+            <input type="checkbox" id="form-remove-pdf"> Quitar la partitura actual
+          </label>
+          <p class="text-[10px] text-slate-500 mt-1">Formato obligatorio: PDF (application/pdf), máximo 10 MB. Se sube a Cloudinary al guardar.</p>
+        </div>
+        <div id="upload-progress" class="hidden">
+          <div class="text-xs text-amber-400 mb-1" id="upload-progress-text">Subiendo archivo a la nube... 0%</div>
+          <div class="w-full h-1.5 bg-slate-700 rounded"><div id="upload-progress-bar" class="h-1.5 bg-amber-400 rounded transition-all" style="width:0%"></div></div>
+        </div>
+        <p id="form-error" class="text-xs text-rose-400 min-h-[1rem]"></p>
+        <div class="flex justify-end space-x-2 pt-2">
+          <button type="button" onclick="closeSongModal()" class="px-4 py-1.5 text-xs bg-slate-700 rounded">Cancelar</button>
+          <button type="submit" id="save-btn" class="px-4 py-1.5 text-xs bg-emerald-600 hover:bg-emerald-700 font-semibold rounded text-white disabled:opacity-50">Guardar Canción</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ============ Modal: Sugerencias y reporte de errores (público) ============ -->
+  <div id="feedback-modal" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-4 z-50">
+    <form id="feedback-form" onsubmit="sendFeedback(event)" class="bg-slate-800 border border-slate-700 p-6 rounded-xl w-full max-w-md max-h-[90vh] overflow-y-auto space-y-3" novalidate>
+      <div>
+        <h3 class="text-lg font-bold text-amber-400">Sugerencias y reportes</h3>
+        <p class="text-xs text-slate-400 mt-1">¿Encontraste un error, falta una canción o tienes una idea? Escríbenos: el equipo de Zimrat lo leerá.</p>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Tipo</label>
+        <select id="fb-type" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm">
+          <option value="sugerencia">💡 Sugerencia</option>
+          <option value="error">🐞 Reportar un error</option>
+          <option value="comentario">💬 Comentario</option>
+        </select>
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Canción relacionada (opcional)</label>
+        <input type="text" id="fb-song" maxlength="200" placeholder="Ej. #5 Santo, Santo, Santo" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm">
+      </div>
+      <div>
+        <label class="text-xs text-slate-400 block mb-1">Mensaje</label>
+        <textarea id="fb-message" rows="5" maxlength="2000" required oninput="document.getElementById('fb-count').textContent = this.value.length + '/2000'" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm"></textarea>
+        <p id="fb-count" class="text-[10px] text-slate-500 text-right">0/2000</p>
+      </div>
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Tu nombre (opcional)</label>
+          <input type="text" id="fb-name" maxlength="80" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm">
+        </div>
+        <div>
+          <label class="text-xs text-slate-400 block mb-1">Contacto (opcional)</label>
+          <input type="text" id="fb-contact" maxlength="120" placeholder="correo o teléfono" class="w-full bg-slate-900 border border-slate-700 rounded p-2 text-sm">
+        </div>
+      </div>
+      <!-- Campo trampa contra bots (invisible para personas) -->
+      <input type="text" id="fb-website" tabindex="-1" autocomplete="off" class="hidden" aria-hidden="true">
+      <p id="fb-error" class="text-xs text-rose-400 min-h-[1rem]"></p>
+      <div class="flex justify-end space-x-2">
+        <button type="button" onclick="closeFeedbackModal()" class="px-4 py-1.5 text-xs bg-slate-700 rounded">Cancelar</button>
+        <button type="submit" id="fb-submit" class="px-4 py-1.5 text-xs bg-amber-500 text-slate-950 font-semibold rounded disabled:opacity-50">Enviar</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- ============ Modal: Panel de administración ============ -->
+  <div id="admin-panel" class="fixed inset-0 bg-black/70 hidden flex items-center justify-center p-2 sm:p-4 z-50">
+    <div class="bg-slate-800 border border-slate-700 rounded-xl w-full max-w-4xl h-[92vh] flex flex-col overflow-hidden">
+      <div class="flex justify-between items-center p-4 border-b border-slate-700">
+        <h3 class="text-lg font-bold text-amber-400">Panel de administración</h3>
+        <button onclick="closeAdminPanel()" class="text-slate-300 hover:text-white text-xl leading-none px-2" aria-label="Cerrar">✕</button>
+      </div>
+
+      <!-- Estado de conexión real con Firebase -->
+      <div class="p-4 border-b border-slate-700">
+        <div id="conn-box" class="rounded-lg border px-4 py-3 flex flex-wrap items-center justify-between gap-2 bg-slate-900 border-slate-600">
+          <div class="flex items-center gap-3">
+            <span id="conn-dot" class="w-3 h-3 rounded-full bg-slate-400"></span>
+            <div>
+              <p id="conn-title" class="text-sm font-semibold">Comprobando conexión con Firebase…</p>
+              <p id="conn-detail" class="text-xs text-slate-400"></p>
+            </div>
+          </div>
+          <button onclick="checkFirebaseConnection(true)" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded">Verificar ahora</button>
+        </div>
+      </div>
+
+      <!-- Pestañas -->
+      <div class="px-4 pt-3 flex gap-2">
+        <button id="tab-feedback" onclick="showAdminTab('feedback')" class="text-xs font-semibold px-3 py-1.5 rounded bg-slate-700">Sugerencias <span id="tab-feedback-count"></span></button>
+        <button id="tab-logs" onclick="showAdminTab('logs')" class="text-xs font-semibold px-3 py-1.5 rounded bg-slate-700">Logs y reportes de errores <span id="tab-logs-count"></span></button>
+      </div>
+
+      <!-- Sugerencias -->
+      <div id="pane-feedback" class="flex-1 overflow-y-auto p-4 space-y-2">
+        <div class="flex flex-wrap gap-2 items-center justify-between mb-2">
+          <label class="text-xs text-slate-300 flex items-center gap-1"><input type="checkbox" id="fb-only-unread" onchange="renderFeedback()"> Solo no leídas</label>
+          <button onclick="loadAdminData()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded">↻ Actualizar</button>
+        </div>
+        <div id="feedback-list" class="space-y-2"></div>
+      </div>
+
+      <!-- Logs -->
+      <div id="pane-logs" class="hidden flex-1 overflow-y-auto p-4 space-y-2">
+        <div class="flex flex-wrap gap-2 items-center justify-between mb-2">
+          <select id="log-filter" onchange="renderLogs()" class="bg-slate-900 border border-slate-700 rounded p-1.5 text-xs">
+            <option value="">Todas las fuentes</option>
+            <option value="firestore">Firestore</option>
+            <option value="cloudinary">Cloudinary</option>
+            <option value="red">Red / conexión</option>
+            <option value="pdf">Visor PDF</option>
+            <option value="auth">Autenticación</option>
+            <option value="javascript">JavaScript</option>
+          </select>
+          <div class="flex gap-2">
+            <button onclick="loadAdminData()" class="text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded">↻ Actualizar</button>
+            <button onclick="clearAllLogs()" class="text-xs bg-rose-700 hover:bg-rose-600 px-3 py-1.5 rounded">Borrar todos</button>
+          </div>
+        </div>
+        <p class="text-[11px] text-slate-500">Errores registrados automáticamente en los dispositivos de todos los usuarios (fallos de red, subidas a Cloudinary, lecturas de Firestore, visor PDF…).</p>
+        <div id="logs-list" class="space-y-2"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== Lógica principal ===================== -->
+  <script type="module">
+    // Todos los módulos de Firebase con la MISMA versión (mezclar versiones rompe el SDK)
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js";
+    import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js";
+    import {
+      getFirestore, collection, getDocs, getDocsFromServer, setDoc, addDoc, updateDoc, deleteDoc, doc,
+      serverTimestamp, query, orderBy, limit, writeBatch,
+    } from "https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js";
+
+    const firebaseConfig = {
+      apiKey: "AIzaSyBI_5w8sDEiHwfOIHJuyt4SqgQj2wXLoVo",
+      authDomain: "zimrat.firebaseapp.com",
+      projectId: "zimrat",
+      storageBucket: "zimrat.firebasestorage.app",
+      messagingSenderId: "67531528494",
+      appId: "1:67531528494:web:5b888065e0d56d008cc2bf",
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
+
+    // ---------- Configuración ----------
+    // Cloud name según tu consola de Cloudinary: «rszi2qgm» (con q).
+    const CLOUD_NAME = "rszi2qgm";
+    const UPLOAD_PRESET = "zimrat_preset";   // preset Unsigned
+    const MAX_PDF_MB = 10;                   // límite por archivo del plan gratuito de Cloudinary
+    const ADMIN_EMAIL = "zimratapp@gmail.com";
+    const CONNECTION_CHECK_MS = 30000;       // comprobación de conexión cada 30 s (con sesión de admin)
+    const FEEDBACK_COOLDOWN_MS = 60000;      // 1 envío de sugerencia por minuto y dispositivo
+
+    let currentZoom = 14;
+    let isHighContrast = false;
+    let isAdmin = false;
+    let songsData = [];
+    let currentSong = null;
+    let pdfRenderToken = 0;
+    let feedbackItems = [];
+    let logItems = [];
+    let connTimer = null;
+    let lastConnState = null;
+
+    // ---------- Utilidades ----------
+    const $ = (id) => document.getElementById(id);
+    const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+    const el = (tag, cls = '', text = '') => { const n = document.createElement(tag); if (cls) n.className = cls; if (text) n.textContent = text; return n; };
+    const fmtDate = (ts) => {
+      const d = ts?.toDate ? ts.toDate() : (typeof ts === 'number' ? new Date(ts) : null);
+      return d ? d.toLocaleString('es', { dateStyle: 'medium', timeStyle: 'short' }) : 'ahora';
+    };
+    const withTimeout = (promise, ms, label) => Promise.race([
+      promise,
+      new Promise((_, reject) => setTimeout(() => reject(Object.assign(new Error(`${label}: sin respuesta en ${ms / 1000} s`), { code: 'timeout' })), ms)),
+    ]);
+
+    /** Avisos breves en pantalla (reemplazan a alert()). type: info | ok | error | warn */
+    function toast(message, type = 'info', ms = 4000) {
+      const colors = { info: 'bg-slate-700 text-white', ok: 'bg-emerald-600 text-white', error: 'bg-rose-600 text-white', warn: 'bg-amber-500 text-slate-950' };
+      const t = el('div', `toast pointer-events-auto max-w-sm text-sm font-medium px-4 py-2.5 rounded-lg shadow-lg ${colors[type] || colors.info}`, message);
+      $('toasts').appendChild(t);
+      setTimeout(() => { t.classList.add('hide'); setTimeout(() => t.remove(), 300); }, ms);
+    }
+
+    // =========================================================
+    //  REGISTRO DE ERRORES (Logs)
+    //  · Todos los errores se registran en la colección «errorLogs» de Firestore
+    //    para que el administrador los vea desde cualquier dispositivo.
+    //  · Sin conexión se guardan en este dispositivo y se envían al reconectar.
+    //  · Se evita el spam: sin duplicados y máximo 25 por sesión.
+    // =========================================================
+    const LOG_QUEUE_KEY = 'zimrat-error-queue';
+    const logSeen = new Set();
+    let logCount = 0;
+
+    function readQueue() { try { return JSON.parse(localStorage.getItem(LOG_QUEUE_KEY) || '[]'); } catch { return []; } }
+    function writeQueue(q) { try { localStorage.setItem(LOG_QUEUE_KEY, JSON.stringify(q.slice(-50))); } catch { /* sin almacenamiento */ } }
+
+    async function sendLog(entry) {
+      await addDoc(collection(db, 'errorLogs'), { ...entry, createdAt: serverTimestamp() });
+    }
+
+    async function logError(source, err, context = {}) {
+      console.error(`[Zimrat:${source}]`, err, context);
+      const message = String(err?.message || err || 'Error desconocido').slice(0, 1000);
+      const key = `${source}|${message}`;
+      if (logSeen.has(key) || logCount >= 25) return;
+      logSeen.add(key);
+      logCount++;
+      const entry = {
+        source,
+        message,
+        code: String(err?.code || err?.status || '').slice(0, 100),
+        context: JSON.stringify(context).slice(0, 500),
+        page: (location.pathname + location.hash).slice(0, 200),
+        userAgent: navigator.userAgent.slice(0, 300),
+        online: navigator.onLine,
+        userRole: isAdmin ? 'admin' : 'publico',
+      };
+      if (!navigator.onLine) { writeQueue([...readQueue(), { ...entry, at: Date.now() }]); return; }
+      try {
+        await withTimeout(sendLog(entry), 10000, 'Registro de error');
+      } catch {
+        writeQueue([...readQueue(), { ...entry, at: Date.now() }]); // se reintentará al reconectar
+      }
+      if (isAdmin && !$('admin-panel').classList.contains('hidden')) loadAdminData();
+    }
+    window.logError = logError;
+
+    async function flushLogQueue() {
+      const queue = readQueue();
+      if (!queue.length || !navigator.onLine) return;
+      writeQueue([]);
+      const failed = [];
+      for (const { at, ...entry } of queue) {
+        try { await withTimeout(sendLog({ ...entry, context: `${entry.context} · registrado sin conexión: ${new Date(at).toISOString()}`.slice(0, 500) }), 10000, 'Envío de log'); }
+        catch { failed.push({ ...entry, at }); }
+      }
+      if (failed.length) writeQueue([...failed, ...readQueue()]);
+    }
+
+    // Errores no controlados de JavaScript
+    window.addEventListener('error', (e) => logError('javascript', e.error || e.message, { file: e.filename, line: e.lineno }));
+    window.addEventListener('unhandledrejection', (e) => logError('javascript', e.reason || 'Promesa rechazada'));
+
+    // =========================================================
+    //  CONEXIÓN
+    //  · Aviso público cuando el dispositivo pierde internet.
+    //  · Para el admin: prueba REAL contra el servidor de Firestore
+    //    (getDocsFromServer, sin usar la caché) cada 30 s.
+    // =========================================================
+    function updateOfflineBanner() { $('offline-banner').classList.toggle('hidden', navigator.onLine); }
+
+    function setConnState(state, detail) {
+      const styles = {
+        ok: { dot: 'bg-emerald-400', box: 'bg-emerald-950/60 border-emerald-600', title: 'Conectado a Firebase', chip: 'bg-emerald-900 text-emerald-200' },
+        error: { dot: 'bg-rose-500', box: 'bg-rose-950/60 border-rose-600', title: 'Error de conexión', chip: 'bg-rose-900 text-rose-200' },
+        checking: { dot: 'bg-slate-400 animate-pulse', box: 'bg-slate-900 border-slate-600', title: 'Comprobando conexión con Firebase…', chip: 'bg-slate-700 text-slate-300' },
+      }[state];
+      $('conn-dot').className = `w-3 h-3 rounded-full ${styles.dot}`;
+      $('conn-box').className = `rounded-lg border px-4 py-3 flex flex-wrap items-center justify-between gap-2 ${styles.box}`;
+      $('conn-title').textContent = styles.title;
+      $('conn-detail').textContent = detail || '';
+      $('conn-chip').className = `hidden sm:inline-flex items-center gap-1.5 text-[11px] px-2 py-1 rounded-full ${styles.chip}`;
+      $('conn-chip-dot').className = `w-2 h-2 rounded-full ${styles.dot}`;
+      $('conn-chip-text').textContent = state === 'ok' ? 'Firebase OK' : state === 'error' ? 'Sin conexión' : 'Comprobando…';
+    }
+
+    window.checkFirebaseConnection = async function (manual = false) {
+      if (!isAdmin) return;
+      setConnState('checking');
+      const time = new Date().toLocaleTimeString('es');
+      if (!navigator.onLine) {
+        setConnState('error', `El dispositivo no tiene internet · ${time}`);
+        lastConnState = 'error';
+        return;
+      }
+      const t0 = performance.now();
+      try {
+        await withTimeout(getDocsFromServer(query(collection(db, 'songs'), limit(1))), 8000, 'Firestore');
+        const ms = Math.round(performance.now() - t0);
+        setConnState('ok', `Respuesta del servidor en ${ms} ms · comprobado a las ${time}`);
+        if (lastConnState === 'error') { toast('Conexión con Firebase restablecida', 'ok'); flushLogQueue(); }
+        lastConnState = 'ok';
+        if (manual) toast('Firebase responde correctamente', 'ok');
+      } catch (err) {
+        const reason = err.code === 'permission-denied' ? 'Firestore responde, pero las reglas niegan la lectura de «songs».'
+          : err.code === 'timeout' ? 'Firestore no respondió en 8 s.' : (err.message || 'Error desconocido');
+        setConnState('error', `${reason} · ${time}`);
+        if (lastConnState !== 'error') logError('red', err, { accion: 'comprobación de conexión con Firestore' });
+        lastConnState = 'error';
+      }
+    };
+
+    function startConnectionMonitor() {
+      stopConnectionMonitor();
+      checkFirebaseConnection();
+      connTimer = setInterval(() => { if (!document.hidden) checkFirebaseConnection(); }, CONNECTION_CHECK_MS);
+    }
+    function stopConnectionMonitor() { clearInterval(connTimer); connTimer = null; lastConnState = null; }
+
+    window.addEventListener('online', () => { updateOfflineBanner(); toast('Conexión a internet recuperada', 'ok'); flushLogQueue(); checkFirebaseConnection(); if (!songsData.length) loadSongs(); });
+    window.addEventListener('offline', () => { updateOfflineBanner(); toast('Sin conexión a internet', 'warn'); checkFirebaseConnection(); });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden && isAdmin) checkFirebaseConnection(); });
+    updateOfflineBanner();
+
+    // =========================================================
+    //  CANCIONES
+    // =========================================================
+    /** Lee el esquema de Zimrat y también los campos antiguos (chordsText, scorePdfUrl). */
+    function fromDoc(id, d) {
+      return {
+        id,
+        number: Number.isInteger(d.number) ? d.number : null,
+        title: d.title || '(Sin título)',
+        artist: d.artist || '',
+        key: d.key || '',
+        lyricsText: d.lyricsText || d.chordsText || '',
+        pdfLinks: { lyrics: d.pdfLinks?.lyrics || '', chords: d.pdfLinks?.chords || '', score: d.pdfLinks?.score || d.scorePdfUrl || '' },
+        raw: d,
+      };
+    }
+
+    window.loadSongs = async function () {
+      try {
+        const snap = await getDocs(collection(db, "songs"));
+        songsData = snap.docs.map((d) => fromDoc(d.id, d.data()))
+          .sort((a, b) => (a.number ?? 1e9) - (b.number ?? 1e9) || a.title.localeCompare(b.title, 'es'));
+        filterSongs();
+        if (currentSong) {
+          const fresh = songsData.find((s) => s.id === currentSong.id);
+          fresh ? selectSong(fresh) : resetViewer();
+        }
+      } catch (e) {
+        logError('firestore', e, { accion: 'leer canciones' });
+        $('songs-list').replaceChildren(el('p', 'text-xs text-rose-400 text-center py-4',
+          e.code === 'permission-denied' ? 'Sin permiso para leer «songs». Revisa las reglas de Firestore.'
+            : !navigator.onLine ? 'Sin conexión a internet. Las canciones se cargarán al reconectar.'
+              : 'No se pudieron cargar las canciones. Inténtalo de nuevo en unos segundos.'));
+      }
+    };
+
+    function renderSongsList(songs) {
+      const list = $('songs-list');
+      list.replaceChildren();
+      if (!songs.length) { list.appendChild(el('p', 'text-xs text-slate-500 text-center py-4', 'No hay canciones que coincidan.')); return; }
+      for (const song of songs) {
+        const item = el('div', 'p-3 bg-slate-900/60 hover:bg-slate-900 border border-slate-700/40 rounded-lg cursor-pointer transition flex justify-between items-center gap-2');
+        const info = el('div');
+        info.append(
+          el('h4', 'text-sm font-semibold text-slate-200', `${song.number ? `#${song.number} · ` : ''}${song.title}`),
+          el('p', 'text-xs text-slate-400', `${song.artist || 'Desconocido'} • Tono: ${song.key || 'N/A'}${song.pdfLinks.score ? ' • 📄' : ''}`));
+        item.append(info, el('span', 'text-xs bg-slate-800 text-amber-400 px-2 py-1 rounded whitespace-nowrap', song.key || ''));
+        item.onclick = () => selectSong(song);
+        list.appendChild(item);
+      }
+    }
+
+    window.filterSongs = function () {
+      const q = norm($('search-input').value.trim());
+      if (!q) return renderSongsList(songsData);
+      const num = q.match(/^#?\s*(\d+)$/);
+      renderSongsList(songsData.filter((s) =>
+        (num && s.number === Number(num[1])) || norm(s.title).includes(q) || norm(s.artist).includes(q) || norm(s.lyricsText).includes(q)));
+    };
+
+    function resetViewer() {
+      currentSong = null;
+      $('song-content').classList.add('hidden');
+      $('welcome-state').classList.remove('hidden');
+    }
+
+    window.selectSong = function (song) {
+      currentSong = song;
+      $('welcome-state').classList.add('hidden');
+      $('song-content').classList.remove('hidden');
+      $('view-title').textContent = `${song.number ? `#${song.number} · ` : ''}${song.title}`;
+      $('view-meta').textContent = `Artista: ${song.artist || 'N/A'} | Tono: ${song.key || 'N/A'}`;
+      const chordsPre = $('view-chords');
+      chordsPre.textContent = song.lyricsText || 'Sin letra o acordes registrados.';
+      chordsPre.style.fontSize = `${currentZoom}px`;
+      if (song.pdfLinks.score) {
+        $('pdf-viewer-section').classList.remove('hidden');
+        $('pdf-direct-link').href = song.pdfLinks.score;
+        renderPDF(song.pdfLinks.score);
+      } else {
+        $('pdf-viewer-section').classList.add('hidden');
+        $('pdf-render-box').replaceChildren();
+      }
+    };
+
+    /** Dibuja TODAS las páginas del PDF con PDF.js, ajustadas al ancho y nítidas. */
+    async function renderPDF(url) {
+      const token = ++pdfRenderToken;
+      const box = $('pdf-render-box');
+      const status = $('pdf-status');
+      box.replaceChildren();
+      status.textContent = 'Cargando partitura...';
+      try {
+        const pdf = await pdfjsLib.getDocument(url).promise;
+        if (token !== pdfRenderToken) return;
+        const dpr = window.devicePixelRatio || 1;
+        const targetWidth = Math.max(240, Math.min(box.clientWidth - 16, 900));
+        for (let n = 1; n <= pdf.numPages; n++) {
+          const page = await pdf.getPage(n);
+          if (token !== pdfRenderToken) return;
+          const base = page.getViewport({ scale: 1 });
+          const scale = targetWidth / base.width;
+          const viewport = page.getViewport({ scale: scale * dpr });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          canvas.style.width = `${Math.floor(base.width * scale)}px`;
+          box.appendChild(canvas);
+          await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        }
+        status.textContent = `${pdf.numPages} página(s)`;
+      } catch (err) {
+        if (token !== pdfRenderToken) return;
+        logError('pdf', err, { url, cancion: currentSong?.title });
+        status.textContent = (err.status === 401 || err.status === 403)
+          ? 'Cloudinary bloqueó el PDF (401). Activa «Allow delivery of PDF and ZIP files» en Cloudinary → Settings → Security.'
+          : !navigator.onLine ? 'Sin conexión: no se puede cargar la partitura.'
+            : 'No se pudo mostrar el PDF aquí. Prueba con «Abrir PDF a Pantalla Completa».';
+      }
+    }
+
+    window.adjustZoom = function (delta) {
+      currentZoom = Math.max(10, Math.min(28, currentZoom + delta));
+      $('view-chords').style.fontSize = `${currentZoom}px`;
+    };
+
+    window.toggleHighContrast = function () {
+      isHighContrast = !isHighContrast;
+      const viewer = $('song-viewer');
+      viewer.classList.toggle('bg-slate-800/80', !isHighContrast);
+      viewer.classList.toggle('bg-black', isHighContrast);
+      viewer.classList.toggle('text-white', isHighContrast);
+      $('view-chords').classList.toggle('bg-black', isHighContrast);
+      $('pdf-render-box').classList.toggle('hc-pdf', isHighContrast);
+      $('pdf-render-box').classList.toggle('bg-black', isHighContrast);
+      $('hc-btn').classList.toggle('bg-amber-500', isHighContrast);
+      $('hc-btn').classList.toggle('text-slate-950', isHighContrast);
+    };
+
+    // =========================================================
+    //  AUTENTICACIÓN
+    // =========================================================
+    window.openLoginModal = () => { $('login-error').textContent = ''; $('login-modal').classList.remove('hidden'); $('admin-email-input').focus(); };
+    window.closeLoginModal = () => $('login-modal').classList.add('hidden');
+
+    const AUTH_ERRORS = {
+      'auth/invalid-credential': 'Correo o contraseña incorrectos.',
+      'auth/wrong-password': 'Correo o contraseña incorrectos.',
+      'auth/user-not-found': 'Correo o contraseña incorrectos.',
+      'auth/invalid-email': 'El correo no es válido.',
+      'auth/too-many-requests': 'Demasiados intentos. Espera unos minutos.',
+      'auth/network-request-failed': 'Sin conexión a internet.',
+      'auth/operation-not-allowed': 'Habilita «Correo/contraseña» en Firebase → Authentication.',
+    };
+
+    window.loginAdmin = async function () {
+      const email = $('admin-email-input').value.trim();
+      const pass = $('admin-pass-input').value;
+      $('login-submit').disabled = true;
+      try {
+        const { user } = await signInWithEmailAndPassword(auth, email, pass);
+        if (user.email.toLowerCase() !== ADMIN_EMAIL) {
+          await signOut(auth);
+          $('login-error').textContent = 'Esta cuenta no tiene permisos de administrador.';
+          return;
+        }
+        closeLoginModal();
+        $('admin-pass-input').value = '';
+        toast('Sesión de administrador iniciada', 'ok');
+      } catch (e) {
+        $('login-error').textContent = AUTH_ERRORS[e.code] || e.message;
+        // Las contraseñas incorrectas no son fallos de la app: solo se registran errores técnicos
+        if (!['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found', 'auth/invalid-email'].includes(e.code)) logError('auth', e, { accion: 'login' });
+      } finally {
+        $('login-submit').disabled = false;
+      }
+    };
+
+    window.logoutAdmin = async () => { await signOut(auth); toast('Sesión cerrada'); };
+
+    onAuthStateChanged(auth, (user) => {
+      isAdmin = Boolean(user?.email && user.email.toLowerCase() === ADMIN_EMAIL);
+      $('login-btn').classList.toggle('hidden', isAdmin);
+      $('admin-user-info').classList.toggle('hidden', !isAdmin);
+      $('new-song-btn').classList.toggle('hidden', !isAdmin);
+      $('admin-song-actions').classList.toggle('hidden', !isAdmin);
+      $('admin-email').textContent = isAdmin ? user.email : '';
+      if (isAdmin) { startConnectionMonitor(); loadAdminData(); flushLogQueue(); }
+      else { stopConnectionMonitor(); closeAdminPanel(); }
+    });
+
+    // =========================================================
+    //  VALIDACIÓN ESTRICTA DE PDF
+    //  Debe cumplir las TRES condiciones:
+    //   1) tipo MIME exactamente «application/pdf»
+    //   2) extensión .pdf
+    //   3) contenido que empieza por «%PDF-» (firma real de un PDF)
+    //  y pesar como máximo 10 MB.
+    // =========================================================
+    async function validatePdf(file) {
+      if (!file) return { ok: true };
+      if (file.type !== 'application/pdf' || !/\.pdf$/i.test(file.name)) {
+        return { ok: false, message: `«${file.name}» no es un PDF (tipo detectado: ${file.type || 'desconocido'}). Solo se permiten archivos PDF (application/pdf).` };
+      }
+      const head = new Uint8Array(await file.slice(0, 5).arrayBuffer());
+      if (String.fromCharCode(...head) !== '%PDF-') {
+        return { ok: false, message: `«${file.name}» tiene extensión .pdf, pero su contenido no es un PDF válido.` };
+      }
+      if (file.size > MAX_PDF_MB * 1024 * 1024) {
+        return { ok: false, message: `El PDF pesa ${(file.size / 1048576).toFixed(1)} MB; el máximo es ${MAX_PDF_MB} MB. Comprímelo antes de subirlo.` };
+      }
+      return { ok: true, message: `✓ PDF válido: ${file.name} (${(file.size / 1048576).toFixed(2)} MB)` };
+    }
+
+    function showPdfAlert(kind, message) {
+      const box = $('pdf-alert');
+      if (!kind) { box.classList.add('hidden'); return; }
+      box.className = `mt-2 text-xs rounded-lg border px-3 py-2 ${kind === 'error' ? 'bg-rose-950/70 border-rose-500 text-rose-200' : 'bg-emerald-950/60 border-emerald-600 text-emerald-200'}`;
+      box.textContent = kind === 'error' ? `⛔ ${message}` : message;
+      $('form-pdf-file').classList.toggle('ring-2', kind === 'error');
+      $('form-pdf-file').classList.toggle('ring-rose-500', kind === 'error');
+    }
+
+    window.onPdfSelected = async function (input) {
+      const file = input.files[0];
+      if (!file) { showPdfAlert(null); return; }
+      const result = await validatePdf(file);
+      if (!result.ok) {
+        input.value = ''; // no se permite conservar un archivo inválido
+        showPdfAlert('error', result.message);
+        toast('Archivo rechazado: solo se permiten PDF', 'error');
+      } else {
+        showPdfAlert('ok', result.message);
+      }
+    };
+
+    // =========================================================
+    //  SUBIDA A CLOUDINARY (unsigned, con progreso)
+    // =========================================================
+    function uploadToCloudinary(file, onProgress) {
+      return new Promise((resolve, reject) => {
+        const formData = new FormData();
+        formData.append("file", file);
+        formData.append("upload_preset", UPLOAD_PRESET);
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/auto/upload`);
+        xhr.timeout = 120000;
+        xhr.upload.onprogress = (e) => { if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 100)); };
+        xhr.onload = () => {
+          let data = {};
+          try { data = JSON.parse(xhr.responseText); } catch { /* no JSON */ }
+          if (xhr.status >= 200 && xhr.status < 300 && data.secure_url) {
+            if (data.format && data.format !== 'pdf') return reject(Object.assign(new Error(`Cloudinary recibió un archivo «${data.format}», no un PDF.`), { code: 'formato' }));
+            return resolve(data);
+          }
+          const msg = data.error?.message || `Error ${xhr.status}`;
+          const error = Object.assign(new Error(
+            /preset/i.test(msg) ? `${msg}. Revisa que el preset «${UPLOAD_PRESET}» exista y sea Unsigned.`
+              : (/cloud.?name/i.test(msg) || xhr.status === 404) ? `${msg}. Revisa el CLOUD_NAME («${CLOUD_NAME}»).`
+                : /format/i.test(msg) ? `${msg}. El preset solo acepta PDF.` : msg), { code: xhr.status });
+          reject(error);
+        };
+        xhr.onerror = () => reject(Object.assign(new Error("No hay conexión con Cloudinary."), { code: 'red' }));
+        xhr.ontimeout = () => reject(Object.assign(new Error("La subida tardó demasiado (más de 2 min)."), { code: 'timeout' }));
+        xhr.send(formData);
+      });
+    }
+
+    // =========================================================
+    //  MODAL DE CANCIÓN (crear / editar)
+    // =========================================================
+    const nextNumber = () => songsData.reduce((max, s) => Math.max(max, s.number || 0), 0) + 1;
+
+    window.openSongModal = (song = null) => {
+      $('song-form').reset();
+      $('form-error').textContent = '';
+      showPdfAlert(null);
+      $('song-id').value = song?.id || '';
+      $('modal-song-title').textContent = song ? 'Editar Canción' : 'Nueva Canción';
+      $('form-number').value = song?.number || nextNumber();
+      $('form-title').value = song?.title || '';
+      $('form-artist').value = song?.artist || '';
+      $('form-key').value = song?.key || '';
+      $('form-chords').value = song?.lyricsText || '';
+      const hasPdf = Boolean(song?.pdfLinks.score);
+      $('current-pdf-note').textContent = hasPdf ? 'Ya tiene una partitura. Sube otro PDF solo si quieres reemplazarla.' : '';
+      $('remove-pdf-wrap').classList.toggle('hidden', !hasPdf);
+      $('remove-pdf-wrap').classList.toggle('flex', hasPdf);
+      $('song-modal').classList.remove('hidden');
+      $('form-title').focus();
+    };
+    window.closeSongModal = () => $('song-modal').classList.add('hidden');
+    window.editCurrentSong = () => currentSong && openSongModal(currentSong);
+
+    window.saveSong = async function (event) {
+      event.preventDefault();
+      if (!isAdmin) return;
+      const errorBox = $('form-error');
+      errorBox.textContent = '';
+      const id = $('song-id').value;
+      const existing = id ? songsData.find((s) => s.id === id) : null;
+      const number = Number($('form-number').value);
+      const title = $('form-title').value.trim();
+      const file = $('form-pdf-file').files[0];
+
+      if (!Number.isInteger(number) || number < 1) { errorBox.textContent = 'El número debe ser un entero mayor que 0.'; return; }
+      const dup = songsData.find((s) => s.number === number && s.id !== id);
+      if (dup) { errorBox.textContent = `El número ${number} ya lo usa «${dup.title}».`; return; }
+      if (!title) { errorBox.textContent = 'Escribe el título.'; return; }
+      if (!navigator.onLine) { errorBox.textContent = 'Sin conexión a internet: no se puede guardar ahora.'; return; }
+      const check = await validatePdf(file); // se vuelve a validar antes de subir
+      if (!check.ok) { showPdfAlert('error', check.message); errorBox.textContent = 'Corrige el archivo PDF.'; return; }
+
+      const saveBtn = $('save-btn');
+      saveBtn.disabled = true;
+      let scoreUrl = $('form-remove-pdf').checked ? '' : (existing?.pdfLinks.score || '');
+
+      // 1) Subida a Cloudinary
+      if (file) {
+        $('upload-progress').classList.remove('hidden');
+        const setProgress = (pct) => { $('upload-progress-text').textContent = `Subiendo archivo a la nube... ${pct}%`; $('upload-progress-bar').style.width = `${pct}%`; };
+        setProgress(0);
+        try {
+          scoreUrl = (await uploadToCloudinary(file, setProgress)).secure_url;
+        } catch (err) {
+          logError('cloudinary', err, { archivo: file.name, tamano: file.size, cancion: title });
+          errorBox.textContent = `Cloudinary: ${err.message}`;
+          $('upload-progress').classList.add('hidden');
+          saveBtn.disabled = false;
+          return;
+        }
+        $('upload-progress').classList.add('hidden');
+      }
+
+      // 2) Guardado en Firestore (esquema de Zimrat, compatible con firestore.rules)
+      const ref = id ? doc(db, "songs", id) : doc(collection(db, "songs"));
+      const prev = existing?.raw || {};
+      try {
+        await withTimeout(setDoc(ref, {
+          number, title,
+          artist: $('form-artist').value.trim(),
+          key: $('form-key').value.trim(),
+          category: prev.category || '',
+          tags: Array.isArray(prev.tags) ? prev.tags : [],
+          lyricsText: $('form-chords').value,
+          pdfLinks: { lyrics: existing?.pdfLinks.lyrics || '', chords: existing?.pdfLinks.chords || '', score: scoreUrl },
+          audioUrl: prev.audioUrl || '',
+          bpm: Number.isInteger(prev.bpm) ? prev.bpm : null,
+          timeSignature: prev.timeSignature || '',
+          updatedAt: serverTimestamp(),
+        }), 15000, 'Guardar canción');
+        closeSongModal();
+        currentSong = { id: ref.id };
+        await loadSongs();
+        toast(id ? 'Canción actualizada' : 'Canción creada', 'ok');
+      } catch (e) {
+        logError('firestore', e, { accion: id ? 'editar canción' : 'crear canción', cancion: title });
+        errorBox.textContent = e.code === 'permission-denied'
+          ? 'Firestore rechazó el cambio: revisa que hayas iniciado sesión con zimratapp@gmail.com y que las reglas estén publicadas.'
+          : `Error al guardar en Firestore: ${e.message}`;
+      } finally {
+        saveBtn.disabled = false;
+      }
+    };
+
+    window.deleteCurrentSong = async function () {
+      if (!isAdmin || !currentSong) return;
+      if (!confirm(`¿Eliminar «${currentSong.title}»? Esta acción no se puede deshacer.`)) return;
+      try {
+        await deleteDoc(doc(db, "songs", currentSong.id));
+        resetViewer();
+        await loadSongs();
+        toast('Canción eliminada', 'ok');
+      } catch (e) {
+        logError('firestore', e, { accion: 'eliminar canción', cancion: currentSong.title });
+        toast(e.code === 'permission-denied' ? 'Sin permiso para eliminar.' : `Error al eliminar: ${e.message}`, 'error');
+      }
+    };
+
+    // =========================================================
+    //  SUGERENCIAS (público) → colección «feedback»
+    // =========================================================
+    window.openFeedbackModal = () => {
+      $('feedback-form').reset();
+      $('fb-error').textContent = '';
+      $('fb-count').textContent = '0/2000';
+      if (currentSong?.title) $('fb-song').value = `${currentSong.number ? `#${currentSong.number} ` : ''}${currentSong.title}`;
+      $('feedback-modal').classList.remove('hidden');
+      $('fb-message').focus();
+    };
+    window.closeFeedbackModal = () => $('feedback-modal').classList.add('hidden');
+
+    window.sendFeedback = async function (event) {
+      event.preventDefault();
+      const errorBox = $('fb-error');
+      errorBox.textContent = '';
+      if ($('fb-website').value) { closeFeedbackModal(); return; } // bot
+      const message = $('fb-message').value.trim();
+      if (message.length < 5) { errorBox.textContent = 'Escribe un mensaje de al menos 5 caracteres.'; return; }
+      const last = Number(localStorage.getItem('zimrat-feedback-last') || 0);
+      if (Date.now() - last < FEEDBACK_COOLDOWN_MS) { errorBox.textContent = 'Espera un minuto antes de enviar otro mensaje.'; return; }
+      if (!navigator.onLine) { errorBox.textContent = 'Sin conexión a internet. Inténtalo cuando vuelva la conexión.'; return; }
+
+      $('fb-submit').disabled = true;
+      try {
+        await withTimeout(addDoc(collection(db, 'feedback'), {
+          type: $('fb-type').value,
+          message: message.slice(0, 2000),
+          songTitle: $('fb-song').value.trim().slice(0, 200),
+          name: $('fb-name').value.trim().slice(0, 80),
+          contact: $('fb-contact').value.trim().slice(0, 120),
+          page: (location.pathname + location.hash).slice(0, 200),
+          userAgent: navigator.userAgent.slice(0, 300),
+          read: false,
+          createdAt: serverTimestamp(),
+        }), 15000, 'Enviar sugerencia');
+        try { localStorage.setItem('zimrat-feedback-last', String(Date.now())); } catch { /* ignorar */ }
+        closeFeedbackModal();
+        toast('¡Gracias! Tu mensaje fue enviado al equipo de Zimrat.', 'ok', 5000);
+        if (isAdmin) loadAdminData();
+      } catch (e) {
+        logError('firestore', e, { accion: 'enviar sugerencia' });
+        errorBox.textContent = e.code === 'permission-denied'
+          ? 'No se pudo enviar: el buzón aún no está habilitado (reglas de Firestore).'
+          : 'No se pudo enviar el mensaje. Inténtalo de nuevo.';
+      } finally {
+        $('fb-submit').disabled = false;
+      }
+    };
+
+    // =========================================================
+    //  PANEL DE ADMINISTRACIÓN: sugerencias + logs
+    // =========================================================
+    window.openAdminPanel = () => { if (!isAdmin) return; $('admin-panel').classList.remove('hidden'); showAdminTab('feedback'); loadAdminData(); checkFirebaseConnection(); };
+    window.closeAdminPanel = () => $('admin-panel').classList.add('hidden');
+
+    window.showAdminTab = (tab) => {
+      $('pane-feedback').classList.toggle('hidden', tab !== 'feedback');
+      $('pane-logs').classList.toggle('hidden', tab !== 'logs');
+      $('tab-feedback').classList.toggle('tab-active', tab === 'feedback');
+      $('tab-logs').classList.toggle('tab-active', tab === 'logs');
+    };
+
+    window.loadAdminData = async function () {
+      if (!isAdmin) return;
+      try {
+        const [fb, logs] = await Promise.all([
+          getDocs(query(collection(db, 'feedback'), orderBy('createdAt', 'desc'), limit(200))),
+          getDocs(query(collection(db, 'errorLogs'), orderBy('createdAt', 'desc'), limit(200))),
+        ]);
+        feedbackItems = fb.docs.map((d) => ({ id: d.id, ...d.data() }));
+        logItems = logs.docs.map((d) => ({ id: d.id, ...d.data() }));
+      } catch (e) {
+        logError('firestore', e, { accion: 'leer panel de administración' });
+        toast(e.code === 'permission-denied' ? 'Sin permiso para leer sugerencias y logs: publica las reglas de Firestore.' : 'No se pudieron cargar los datos del panel.', 'error');
+      }
+      renderFeedback();
+      renderLogs();
+    };
+
+    function updateBadges() {
+      const unread = feedbackItems.filter((f) => !f.read).length;
+      $('tab-feedback-count').textContent = `(${unread} sin leer)`;
+      $('tab-logs-count').textContent = `(${logItems.length})`;
+      $('panel-badge').textContent = unread > 99 ? '99+' : String(unread);
+      $('panel-badge').classList.toggle('hidden', !unread);
+    }
+
+    window.renderFeedback = function () {
+      updateBadges();
+      const list = $('feedback-list');
+      const items = $('fb-only-unread').checked ? feedbackItems.filter((f) => !f.read) : feedbackItems;
+      list.replaceChildren();
+      if (!items.length) { list.appendChild(el('p', 'text-xs text-slate-500 text-center py-6', 'No hay mensajes.')); return; }
+      const label = { sugerencia: '💡 Sugerencia', error: '🐞 Error', comentario: '💬 Comentario' };
+      for (const f of items) {
+        const card = el('div', `rounded-lg border p-3 ${f.read ? 'border-slate-700 bg-slate-900/40' : 'border-amber-500/60 bg-slate-900'}`);
+        const head = el('div', 'flex flex-wrap justify-between gap-2 text-xs mb-1');
+        const left = el('div', 'flex flex-wrap items-center gap-2');
+        left.append(el('span', 'font-semibold text-amber-300', label[f.type] || f.type), el('span', 'text-slate-400', fmtDate(f.createdAt)));
+        if (!f.read) left.append(el('span', 'bg-amber-500 text-slate-950 font-bold px-1.5 rounded text-[10px]', 'NUEVO'));
+        const actions = el('div', 'flex gap-2');
+        if (!f.read) {
+          const mark = el('button', 'bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded', 'Marcar leído');
+          mark.onclick = () => markFeedbackRead(f.id);
+          actions.append(mark);
+        }
+        const del = el('button', 'bg-rose-800 hover:bg-rose-700 px-2 py-0.5 rounded', 'Eliminar');
+        del.onclick = () => deleteFeedback(f.id);
+        actions.append(del);
+        head.append(left, actions);
+        card.append(head);
+        if (f.songTitle) card.append(el('p', 'text-xs text-sky-300 mb-1', `🎵 ${f.songTitle}`));
+        card.append(el('p', 'text-sm whitespace-pre-wrap text-slate-100', f.message));
+        const who = [f.name, f.contact].filter(Boolean).join(' · ');
+        if (who) card.append(el('p', 'text-xs text-slate-400 mt-1', `De: ${who}`));
+        list.appendChild(card);
+      }
+    };
+
+    async function markFeedbackRead(id) {
+      try {
+        await updateDoc(doc(db, 'feedback', id), { read: true });
+        const f = feedbackItems.find((x) => x.id === id);
+        if (f) f.read = true;
+        renderFeedback();
+      } catch (e) { logError('firestore', e, { accion: 'marcar sugerencia leída' }); toast('No se pudo actualizar.', 'error'); }
+    }
+
+    async function deleteFeedback(id) {
+      if (!confirm('¿Eliminar este mensaje?')) return;
+      try {
+        await deleteDoc(doc(db, 'feedback', id));
+        feedbackItems = feedbackItems.filter((x) => x.id !== id);
+        renderFeedback();
+      } catch (e) { logError('firestore', e, { accion: 'eliminar sugerencia' }); toast('No se pudo eliminar.', 'error'); }
+    }
+
+    window.renderLogs = function () {
+      updateBadges();
+      const list = $('logs-list');
+      const filter = $('log-filter').value;
+      const pending = readQueue().map((l) => ({ ...l, pending: true }));
+      const items = [...pending, ...logItems].filter((l) => !filter || l.source === filter);
+      list.replaceChildren();
+      if (!items.length) { list.appendChild(el('p', 'text-xs text-slate-500 text-center py-6', 'Sin errores registrados. 🎉')); return; }
+      const colors = { firestore: 'bg-orange-700', cloudinary: 'bg-indigo-700', red: 'bg-rose-700', pdf: 'bg-teal-700', auth: 'bg-yellow-700', javascript: 'bg-slate-600' };
+      for (const l of items) {
+        const card = el('div', 'rounded-lg border border-slate-700 bg-slate-900/60 p-3');
+        const head = el('div', 'flex flex-wrap justify-between gap-2 text-xs mb-1');
+        const left = el('div', 'flex flex-wrap items-center gap-2');
+        left.append(
+          el('span', `${colors[l.source] || 'bg-slate-600'} text-white font-semibold px-2 py-0.5 rounded`, l.source),
+          el('span', 'text-slate-400', l.pending ? `${fmtDate(l.at)} · pendiente de enviar (este dispositivo)` : fmtDate(l.createdAt)),
+          el('span', 'text-slate-500', l.userRole === 'admin' ? 'admin' : 'usuario'));
+        if (l.code) left.append(el('span', 'text-slate-400 font-mono', `código: ${l.code}`));
+        head.append(left);
+        if (!l.pending) {
+          const del = el('button', 'bg-slate-700 hover:bg-slate-600 px-2 py-0.5 rounded', 'Eliminar');
+          del.onclick = () => deleteLog(l.id);
+          head.append(del);
+        }
+        card.append(head, el('p', 'text-sm text-rose-200 break-words', l.message));
+        const details = el('details', 'mt-1 text-[11px] text-slate-400');
+        details.append(el('summary', '', 'Detalles'));
+        const pre = el('pre', 'whitespace-pre-wrap break-all mt-1', [
+          `Contexto: ${l.context || '—'}`, `Página: ${l.page || '—'}`, `En línea: ${l.online ? 'sí' : 'no'}`, `Navegador: ${l.userAgent || '—'}`,
+        ].join('\n'));
+        details.append(pre);
+        card.append(details);
+        list.appendChild(card);
+      }
+    };
+
+    async function deleteLog(id) {
+      try {
+        await deleteDoc(doc(db, 'errorLogs', id));
+        logItems = logItems.filter((x) => x.id !== id);
+        renderLogs();
+      } catch (e) { toast('No se pudo eliminar el log.', 'error'); }
+    }
+
+    window.clearAllLogs = async function () {
+      if (!logItems.length) return;
+      if (!confirm(`¿Borrar los ${logItems.length} registros de errores?`)) return;
+      try {
+        for (let i = 0; i < logItems.length; i += 400) {
+          const batch = writeBatch(db);
+          logItems.slice(i, i + 400).forEach((l) => batch.delete(doc(db, 'errorLogs', l.id)));
+          await batch.commit();
+        }
+        logItems = [];
+        renderLogs();
+        toast('Registros borrados', 'ok');
+      } catch (e) { toast('No se pudieron borrar los registros.', 'error'); }
+    };
+
+    // Cerrar modales con Escape
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { closeLoginModal(); closeSongModal(); closeFeedbackModal(); closeAdminPanel(); }
+    });
+
+    // Inicio
+    loadSongs();
+    flushLogQueue();
+  </script>
+</body>
+</html>

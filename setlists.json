@@ -1,0 +1,14 @@
+[
+  {
+    "nombre": "Repertorio Domingo",
+    "fecha": "2026-11-15",
+    "notas": "Entrada alegre, momento de adoración y cierre con júbilo.",
+    "numeros": [1, 5, 7, 6]
+  },
+  {
+    "nombre": "Ensayo General",
+    "fecha": "2026-11-12",
+    "notas": "Repasar los cambios de compás (3/4 y 6/8).",
+    "numeros": [2, 4, 3, 8]
+  }
+]
