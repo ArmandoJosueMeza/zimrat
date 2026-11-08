@@ -1,1 +1,20 @@
 /Claude outputs
+
+# Dependencias y herramientas locales (emuladores, npm)
+node_modules/
+.firebase/
+*.log
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# Ajustes personales de Claude Code (los compartidos van en CLAUDE.md)
+.claude/settings.local.json
+CLAUDE.local.md
+
+# Sistema operativo y editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/*
+!.vscode/extensions.json
